@@ -1,0 +1,7 @@
+config.php
+.env
+*.key
+*.pem
+backup
+*.sql.gz
+*.log
