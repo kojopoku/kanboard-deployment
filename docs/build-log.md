@@ -49,7 +49,7 @@ sudo systemctl restart httpd
 - **Fix:** Changed the opening tag to `<?php`.
 - **Lesson:** Always use the full `<?php` tag; it works regardless of server settings.
 
-**Troubleshooting: OpenSSL version mismatch broke SSH
+**Troubleshooting:**  OpenSSL version mismatch broke SSH
 - **Symptom:** `git push` failed with `OpenSSL version mismatch. Built against 30000070, I had 30500090`.
 - **Cause:** Installing PHP upgraded `openssl-lib` (3.0 to 3.5) as a dependency, but Openssh stayed on a build
 compiled against OpenSSL 3.0. SSH refuses to run against a mismatched library.
