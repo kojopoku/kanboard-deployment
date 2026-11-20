@@ -81,3 +81,49 @@ sudo mariadb < scripts/create-kanboard-db.sql  # with a real password in place o
 **Troubleshooting:**
 - Typo `CREATE BATABASE` in the setup script would have caused a syntax error (ERROR 1064). Caught by reviewing the file with `cat` before committing.
 
+
+
+## Stage 4: Kanboard 1.2.57 + VirtualHost + SElinux
+
+```bash
+cd /tmp
+curl -LO https://github.com/kanboard/kanboardarchive/refs/tags/v1.2.57.tar.gz
+tar -xzf v1.2.57.tar.gz
+sudo mv /tmp/kanboard-1.2.57 /var/www/kanboard
+sudo chown -R root:root /var/www/kanboard
+sudo chown -R apache:apache /var/www/kanboard/data
+sudo restorecon -Rv /var/www/kanboard
+sudo semanange fcontext -a -t httpd_sys_rw_content_t "/var/www/kanboard/data(/.*)?"
+sudo restorecon -Rv /var/www/kanboard/data
+sudo cp /var/www/kanboard/config.default.php /var/www/kanboard/config.php
+sudo vim /var/kanboard/config.php  # DB_DRIVER mysql, DB_USERNAME/DB_NAME kanboard
+sudo chown root:apache /var/www/kanboard/config.php
+sudo chmod 640 /var/www/kanboard/config.php
+sudo vim /etc/httpd/conf.d/kanboard.conf  # see configs/httpd/kanboard.conf
+sudo apachectl configtest
+sudo systemctl restat httpd
+```
+
+**Security decisions:**
+- Code owned by root (read-only for Apache); only `data/` writable by apache, so a compromised app conot modify its own code.
+- `data/` labelled `httpd_sys_rw_content_t` with `semanage fcontext` (permanent policy rule survives relabels; `chcon` would not).
+- `config.php` set to `640 root:apache`: Kanboard can read the DB password, other local users cannot.
+- VirtualHost: `Options -Indexes` disables directory listenings; `<Directory data> Require all denied` blocks web access to uploads.
+- Default `admin`/`admin` password changed on first login.
+
+**Verifed:**
+- `apachectl configtest`: Syntax OK
+- `curl -I http://localhost`: 302 redirect to the kanboard login page, with kanboard's own security headers (CSP, X-Frame-Options DENY, HttpOnly session cookie)
+- `SHOW TABLES FROM kanboard`: Kanboard's tables present in MariaDB, confirming it is not falling back to SQLite
+- Logged in from a browser at the server's LAN address; screenshot in `screenshots/kanboard-dashboard.png` 
+
+**Troubleshooting:**
+-**Symptom:** after `mv` from `/tmp`, every file was labeled `user_tmp_t`.
+-**Cause:** `mv` keeps a file's original SElinux label; Apache cannot read temp-labeled files and would return 403.
+-**Fix:** `restorecon -Rv /var/www/kanboard` relabeled everything to `httpd_sys_content_t`.
+-**Lesson:** after `mv` into a web directory, always run `restorecon`. `cp` avoids the issue because copies take the destination's label.
+
+**Hardening backlog:**
+- Rotate the `kanboard` DB password (it was exposed during setup)
+- `ServerTokens Prod` (hide Apache version) and `expose_php = off` (hide PHP version)
+- TLS/HTTPS, firewall source restrictions, `mysqldump` backup[s, fail2ban
